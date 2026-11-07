@@ -2,6 +2,7 @@
   let markedElement = null;
   let originalOutline = "";
   let originalOutlineOffset = "";
+  let active = false;
 
   browser.runtime.onMessage.addListener((message) => {
     if (message.action !== "mark-target") return;
@@ -10,11 +11,21 @@
     const el = browser.menus.getTargetElement(message.targetElementId);
     if (!el) return;
 
-    markElement(el);
+    startMarking(el);
   });
 
+  function startMarking(el) {
+    stopMarking();
+    markElement(el);
+    active = true;
+    document.addEventListener("mouseover", handleMouseOver, true);
+    document.addEventListener("click", handleClick, true);
+    document.addEventListener("contextmenu", handleContextMenu, true);
+  }
+
   function markElement(el) {
-    resetMark();
+    if (el === markedElement) return;
+    unmarkElement();
 
     markedElement = el;
     originalOutline = el.style.outline;
@@ -22,32 +33,47 @@
 
     el.style.outline = "3px solid red";
     el.style.outlineOffset = "-3px";
-
-    document.addEventListener("click", handleClick, true);
   }
 
-  function handleClick(event) {
-    if (!markedElement) return;
-
-    if (markedElement.contains(event.target)) {
-      // Second click on the marked element: remove it.
-      event.preventDefault();
-      event.stopPropagation();
-      markedElement.remove();
-      markedElement = null;
-      document.removeEventListener("click", handleClick, true);
-    } else {
-      // Click outside the frame: clear the mark, resume normal display.
-      resetMark();
-    }
-  }
-
-  function resetMark() {
+  function unmarkElement() {
     if (markedElement) {
       markedElement.style.outline = originalOutline;
       markedElement.style.outlineOffset = originalOutlineOffset;
     }
     markedElement = null;
+  }
+
+  function handleMouseOver(event) {
+    if (!active) return;
+    const el = event.target;
+    if (!(el instanceof Element)) return;
+    if (el === document.documentElement || el === document.body) return;
+    markElement(el);
+  }
+
+  function handleClick(event) {
+    if (!active || !markedElement) return;
+
+    // Click removes the element currently under the red frame.
+    event.preventDefault();
+    event.stopPropagation();
+    const el = markedElement;
+    stopMarking();
+    el.remove();
+  }
+
+  function handleContextMenu(event) {
+    if (!active) return;
+    event.preventDefault();
+    event.stopPropagation();
+    stopMarking();
+  }
+
+  function stopMarking() {
+    unmarkElement();
+    active = false;
+    document.removeEventListener("mouseover", handleMouseOver, true);
     document.removeEventListener("click", handleClick, true);
+    document.removeEventListener("contextmenu", handleContextMenu, true);
   }
 })();
